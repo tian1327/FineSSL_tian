@@ -2,6 +2,7 @@ import logging
 import math
 
 import os
+import yaml
 import sys
 import pickle
 
@@ -39,6 +40,35 @@ stl10_std = (0.2471, 0.2435, 0.2616)
 
 SVHN_mean = (0.4377, 0.4438, 0.4728)
 SVHN_std = (0.1980, 0.2010, 0.1970)
+
+
+class CustomFewShotDataset(Dataset):
+    def __init__(self, list_file, transform=None):
+        # Load dataset root from config.yaml
+        with open("data/config.yml", "r") as f:
+            dataset_config = yaml.safe_load(f)
+        self.root_path = dataset_config["dataset_path"]
+
+        self.samples = []
+        with open(list_file, "r") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    rel_path, label = parts[0], int(parts[1])
+                    full_path = os.path.join(self.root_path, rel_path)
+                    self.samples.append((full_path, label))
+
+        self.transform = transform
+
+    def __getitem__(self, idx):
+        path, label = self.samples[idx]
+        image = Image.open(path).convert("RGB")
+        if self.transform:
+            image = self.transform(image)
+        return image, label
+
+    def __len__(self):
+        return len(self.samples)
 
 
 def transpose(x, source='NCHW', target='NHWC'):
@@ -731,8 +761,19 @@ class Semi_Aves(VisionDataset):
 def get_semi_aves(cfg):
     resize_dim = 256
     crop_dim = 224
-    dataset_mean = (0.485, 0.456, 0.406)
-    dataset_std = (0.229, 0.224, 0.225)
+    # dataset_mean = (0.485, 0.456, 0.406)
+    # dataset_std = (0.229, 0.224, 0.225)
+
+    dataset_mean=(0.48145466, 0.4578275, 0.40821073)
+    dataset_std=(0.26862954, 0.26130258, 0.27577711)
+
+    dataset_name = cfg.dataset.lower()
+    shots = cfg.DATA.SHOTS
+    seed = cfg.DATA.SEED
+
+    fewshot_file = f"data/{dataset_name}/fewshot{shots}_seed{seed}.txt"
+    unlabeled_file = f"data/{dataset_name}/u_train_in.txt"
+    test_file = f"data/{dataset_name}/test.txt"
 
     transform_labeled = transforms.Compose([
         transforms.Resize(resize_dim),
@@ -748,12 +789,19 @@ def get_semi_aves(cfg):
         transforms.ToTensor(),
         transforms.Normalize(mean=dataset_mean, std=dataset_std)])
 
-    train_labeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=True, transform=transform_labeled)
+    transform_unlabeled = TransformFixMatch_ws(mean=dataset_mean, std=dataset_std)
 
-    train_unlabeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=False, out_ulab=cfg.DATA.out_ulab,
-                                          transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std))
 
-    test_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
+    # train_labeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=True, transform=transform_labeled)
+
+    # train_unlabeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=False, out_ulab=cfg.DATA.out_ulab,
+    #                                       transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std))
+
+    # test_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
+
+    train_labeled_dataset = CustomFewShotDataset(fewshot_file, transform=transform_labeled)
+    train_unlabeled_dataset = CustomFewShotDataset(unlabeled_file, transform=transform_unlabeled)
+    test_dataset = CustomFewShotDataset(test_file, transform=transform_val)
 
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 

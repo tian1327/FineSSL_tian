@@ -3,6 +3,7 @@ import time
 import datetime
 import numpy as np
 from tqdm import tqdm
+import json
 
 import torch
 import torch.nn as nn
@@ -32,6 +33,14 @@ from collections import Counter
 best_acc = 0
 best_zs_acc = 0
 best_acc1 = 0
+
+
+def load_classnames_from_metrics(dataset_name, num_classes):
+    metrics_path = f"data/{dataset_name}/" + f"{dataset_name}_metrics-LAION400M.json"
+
+    with open(metrics_file, "r") as f:
+        data = json.load(f)
+    return [data[str(i)]["most_common_name"] for i in range(num_classes)]
 
 
 def load_clip_to_cpu(cfg):
@@ -69,7 +78,8 @@ def de_interleave(x, size):
 
 
 class Trainer:
-    def __init__(self, cfg):
+    # def __init__(self, cfg):
+    def __init__(self, cfg, clip_model=None, tokenizer=None):
 
         if not torch.cuda.is_available():
             self.device = torch.device("cpu")
@@ -85,6 +95,14 @@ class Trainer:
         self.output_dir = cfg.output_dir
 
         self.cfg = cfg
+        self.clip_model = clip_model
+        self.tokenizer = tokenizer
+
+        # Load and assign self.classnames
+        dataset_name = cfg.dataset.lower()
+        self.classnames = load_classnames_from_metrics(dataset_name, cfg.DATA.NUMBER_CLASSES)
+
+
         self.build_data_loader()
         self.build_model()
         # self.evaluator = Evaluator(cfg, self.cls_num_list)
@@ -95,10 +113,13 @@ class Trainer:
         class_list = []
         for i in range(cfg.DATA.NUMBER_CLASSES):
             class_list.append(str(i))
+        
 
         title = 'PEL-SSL-' + cfg.DATA.NAME
         self.logger = Logger(os.path.join(cfg.output_dir, 'logSSL.txt'), title=title)
         self.logger.set_names(['Top1 acc', 'Best Top1 acc', 'epoch'])
+
+
 
     def build_data_loader(self):
         cfg = self.cfg
@@ -126,8 +147,11 @@ class Trainer:
         # classnames = self.classnames
 
         print(f"Loading CLIP (backbone: {cfg.backbone})")
-        clip_model = load_clip_to_cpu(cfg)
-        clip_model.to(self.device)
+        # clip_model = load_clip_to_cpu(cfg)
+        # clip_model.to(self.device)
+        
+        clip_model = self.clip_model.to(self.device)
+        tokenizer = self.tokenizer
 
         print(cfg.prec)
 
@@ -136,19 +160,19 @@ class Trainer:
             # CLIP's default precision is fp16
             clip_model.float()
 
-        if cfg.template is not None:
-            temp = cfg.template
-        else:
-            temp = "a photo of a {}."
-        print(temp)
+        template = cfg.template or "a photo of a {}."
+        print(template)
         print(self.classnames)
-        prompts = [temp.format(c.replace("_", " ")) for c in self.classnames]
-        # prompts = [c for c in self.classnames]
-        prompts = torch.cat([clip.tokenize(p) for p in prompts])
-        prompts = prompts.to(self.device)
 
+        # prompts = [temp.format(c.replace("_", " ")) for c in self.classnames]
+        # prompts = torch.cat([clip.tokenize(p) for p in prompts])
+        # prompts = prompts.to(self.device)
+        prompts = [template.format(c) for c in self.classnames]
+        tokens = tokenizer(prompts).to(self.device)
+        
         with torch.no_grad():
-            text_features = clip_model.encode_text(prompts)
+            # text_features = clip_model.encode_text(prompts)
+            text_features = clip_model.encode_text(tokens)
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
         self.text_features = text_features

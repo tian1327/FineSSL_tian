@@ -6,15 +6,16 @@ import torch
 
 from utils.config import _C as cfg
 from utils.logger import setup_logger
+import open_clip
 
 # from trainer import Trainer
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main(args):
     cfg.defrost()
     cfg.merge_from_file(args.cfg)
     cfg.merge_from_list(args.opts)
-    # cfg.freeze()
+    cfg.freeze()
 
     if cfg.KD:
         from trainer_kd import Trainer
@@ -43,11 +44,28 @@ def main(args):
     numl = cfg.DATA.NUM_L
     if cfg.output_dir is None:
         cfg.output_dir = os.path.join("./output", os.path.basename(args.cfg).rstrip(".yaml"))
-    else:
-        cfg.output_dir = os.path.join(cfg.output_dir, cfg.DATA.NAME, f"NUML{numl}_imbl{imbl}_imbu{imbu}")
+    # else:
+    #     cfg.output_dir = os.path.join(cfg.output_dir, cfg.DATA.NAME, f"NUML{numl}_imbl{imbl}_imbu{imbu}")
 
     print("** Config **")
     print(cfg)
+
+    # New logic for open_clip
+    backbone_key = cfg.backbone.split("_")[0]  # e.g. vitb32
+    pretrain_key = cfg.backbone.split("_")[-1] # e.g. laion400m
+
+    model_name_map = {
+        "vitb32": "ViT-B-32",
+        "vitb16": "ViT-B-16",
+        "vitl14": "ViT-L-14"
+    }
+    model_name = model_name_map[backbone_key]
+
+    clip_model, _, _ = open_clip.create_model_and_transforms(model_name, pretrained=pretrain_key)
+    tokenizer = open_clip.get_tokenizer(model_name)
+
+    trainer = Trainer(cfg, clip_model=clip_model, tokenizer=tokenizer)
+    # End of new logic
 
     if cfg.eval_only:
         cfg.model_dir = cfg.model_dir if cfg.model_dir is not None else cfg.output_dir
@@ -57,7 +75,10 @@ def main(args):
         return
 
     setup_logger(cfg.output_dir)
-    trainer = Trainer(cfg)
+    # trainer = Trainer(cfg)
+
+    
+
     trainer.train()
 
 
