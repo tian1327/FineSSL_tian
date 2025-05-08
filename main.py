@@ -15,7 +15,7 @@ def main(args):
     cfg.defrost()
     cfg.merge_from_file(args.cfg)
     cfg.merge_from_list(args.opts)
-    cfg.freeze()
+    # cfg.freeze()
 
     if cfg.KD:
         from trainer_kd import Trainer
@@ -39,9 +39,9 @@ def main(args):
         torch.backends.cudnn.deterministic = False
         torch.backends.cudnn.benchmark = True
 
-    imbl = cfg.DATA.IMB_L
-    imbu = cfg.DATA.IMB_U
-    numl = cfg.DATA.NUM_L
+    # imbl = cfg.DATA.IMB_L
+    # imbu = cfg.DATA.IMB_U
+    # numl = cfg.DATA.NUM_L
     if cfg.output_dir is None:
         cfg.output_dir = os.path.join("./output", os.path.basename(args.cfg).rstrip(".yaml"))
     # else:
@@ -52,7 +52,8 @@ def main(args):
 
     # New logic for open_clip
     backbone_key = cfg.backbone.split("_")[0]  # e.g. vitb32
-    pretrain_key = cfg.backbone.split("_")[-1] # e.g. laion400m
+    pretrain_key = pretrain_key = "_".join(cfg.backbone.split("_")[2:])
+
 
     model_name_map = {
         "vitb32": "ViT-B-32",
@@ -64,6 +65,7 @@ def main(args):
     clip_model, _, _ = open_clip.create_model_and_transforms(model_name, pretrained=pretrain_key)
     tokenizer = open_clip.get_tokenizer(model_name)
 
+    os.makedirs(cfg.output_dir, exist_ok=True)
     trainer = Trainer(cfg, clip_model=clip_model, tokenizer=tokenizer)
     # End of new logic
 
@@ -77,13 +79,18 @@ def main(args):
     setup_logger(cfg.output_dir)
     # trainer = Trainer(cfg)
 
-    
+    if args.dry_run:
+        trainer.build_data_loader()
+        trainer.build_model()
+        print("Dry run passed.")
+        return
 
     trainer.train()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--dry_run", action="store_true", help="Sanity check everything without training")
     parser.add_argument("--cfg", type=str, default="", help="path to config file")
     parser.add_argument("opts", default=None, nargs=argparse.REMAINDER,
                         help="modify config options using the command-line")

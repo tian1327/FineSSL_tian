@@ -1,6 +1,6 @@
 # === Dataset & Backbone ===
 dataset: "semi-aves"
-backbone: "vitb32_openclip_laion400m"
+backbone: "vitb32_openclip_laion400m_e32"
 resolution: 224
 stride: 32
 
@@ -22,6 +22,7 @@ template: "a photo of a {}."
 
 # === Data Settings ===
 DATA:
+  NAME: semi-aves
   SHOTS: 4             # few-shot shots per class
   SEED: 1              # seed for sampling few-shot subset
   NUMBER_CLASSES: 200  # number of classes in Semi-Aves

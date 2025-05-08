@@ -43,11 +43,13 @@ SVHN_std = (0.1980, 0.2010, 0.1970)
 
 
 class CustomFewShotDataset(Dataset):
-    def __init__(self, list_file, transform=None):
+    def __init__(self, list_file, transform=None, cfg=None):
         # Load dataset root from config.yaml
         with open("data/config.yml", "r") as f:
             dataset_config = yaml.safe_load(f)
+        self.cfg = cfg
         self.root_path = dataset_config["dataset_path"]
+        self.dataset_name = self.cfg.dataset.lower()
 
         self.samples = []
         with open(list_file, "r") as f:
@@ -55,20 +57,20 @@ class CustomFewShotDataset(Dataset):
                 parts = line.strip().split()
                 if len(parts) >= 2:
                     rel_path, label = parts[0], int(parts[1])
-                    full_path = os.path.join(self.root_path, rel_path)
+                    full_path = os.path.join(self.root_path, self.dataset_name, rel_path)
                     self.samples.append((full_path, label))
 
         self.transform = transform
 
-    def __getitem__(self, idx):
-        path, label = self.samples[idx]
-        image = Image.open(path).convert("RGB")
+    def __getitem__(self, index):
+        img_path, label = self.samples[index]
+        image = Image.open(img_path).convert("RGB")
         if self.transform:
             image = self.transform(image)
-        return image, label
+        return image, label, index
 
     def __len__(self):
-        return len(self.samples)
+            return len(self.samples)
 
 
 def transpose(x, source='NCHW', target='NHWC'):
@@ -799,9 +801,9 @@ def get_semi_aves(cfg):
 
     # test_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
 
-    train_labeled_dataset = CustomFewShotDataset(fewshot_file, transform=transform_labeled)
-    train_unlabeled_dataset = CustomFewShotDataset(unlabeled_file, transform=transform_unlabeled)
-    test_dataset = CustomFewShotDataset(test_file, transform=transform_val)
+    train_labeled_dataset = CustomFewShotDataset(fewshot_file, transform=transform_labeled, cfg=cfg)
+    train_unlabeled_dataset = CustomFewShotDataset(unlabeled_file, transform=transform_unlabeled, cfg=cfg)
+    test_dataset = CustomFewShotDataset(test_file, transform=transform_val, cfg=cfg)
 
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
@@ -1413,11 +1415,11 @@ DATASET_GETTERS = {'CIFAR10': get_cifar10,
                    'FOOD101': get_food101,
                    'IMAGENET': get_imagenet,
                    'iNaturalist': get_iNaturalist,
-                   'Semi_Aves': get_semi_aves,
+                   'semi-aves': get_semi_aves,
                    'ImageNet-LT': get_imagenet_lt,
                    'semi_ImageNet': get_semi_imagenet,
                    'DomainNet': get_domainnet,
-                   'EuroSAT': get_eurosat,
+                   'eurosat': get_eurosat,
                    'CIFAR100-C': get_cifar100_c,
                    'CUB': get_cub}
 

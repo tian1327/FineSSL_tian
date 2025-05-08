@@ -36,7 +36,11 @@ best_acc1 = 0
 
 
 def load_classnames_from_metrics(dataset_name, num_classes):
-    metrics_path = f"data/{dataset_name}/" + f"{dataset_name}_metrics-LAION400M.json"
+    """
+    Loads the most_common_name for each class from the metrics-LAION400M.json file
+    stored under the dataset folder.
+    """
+    metrics_file = f"data/{dataset_name}/" + f"{dataset_name}_metrics-LAION400M.json"
 
     with open(metrics_file, "r") as f:
         data = json.load(f)
@@ -116,6 +120,7 @@ class Trainer:
         
 
         title = 'PEL-SSL-' + cfg.DATA.NAME
+        os.makedirs(cfg.output_dir, exist_ok=True)
         self.logger = Logger(os.path.join(cfg.output_dir, 'logSSL.txt'), title=title)
         self.logger.set_names(['Top1 acc', 'Best Top1 acc', 'epoch'])
 
@@ -127,7 +132,7 @@ class Trainer:
             cfg)
 
         self.num_classes = cfg.DATA.NUMBER_CLASSES
-        self.classnames = labeled_dataset.classes
+        # self.classnames = labeled_dataset.classes
 
         # self.sampled_cls_num_list = self.cls_num_list
         self.train_label_loader = DataLoader(labeled_dataset,
@@ -180,7 +185,7 @@ class Trainer:
         self.model = Model(cfg, clip_model, self.text_features)
         self.tuner = self.model.tuner
         self.clip_model = clip_model
-        self.dtype = clip_model.dtype
+        self.dtype = next(clip_model.parameters()).dtype #clip_model.dtype
 
         print("Turning off gradients in the model")
         for name, param in self.model.named_parameters():
