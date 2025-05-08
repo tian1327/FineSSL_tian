@@ -9,7 +9,7 @@ echo "Time: $(date)"
 
 
 # Run training script
-python main.py --cfg configs/peft/semi_aves_4shot.yaml
+python -u main.py --cfg configs/peft/semi_aves_4shot.yaml
 
 
 echo "Training completed at: $(date)"

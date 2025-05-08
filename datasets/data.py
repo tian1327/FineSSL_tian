@@ -233,7 +233,7 @@ def make_imb_data(max_num, class_num, gamma):
         else:
             class_num_list.append(int(max_num * np.power(mu, i)))
 
-    print(class_num_list)
+    print(class_num_list, flush=True)
     return list(class_num_list)
 
 
@@ -604,7 +604,7 @@ def get_imagenet(cfg):
 
     test_dataset = ImageNet(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
 
-    print('-')
+    print('-', flush=True)
 
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
@@ -684,7 +684,7 @@ def get_iNaturalist(cfg):
 
     test_dataset = iNaturalist(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
 
-    print('-')
+    print('-', flush=True)
 
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
@@ -715,7 +715,7 @@ class Semi_Aves(VisionDataset):
             classes = classes[:, 1]
             for i in range(len(classes)):
                 classes[i] = classes[i].replace('_', ' ')
-            # print(classes)
+            # print(classes, flush=True)
             self.classes = classes
 
         self.samples = [root + '/' + item['file_name'] for item in result['images']]
@@ -880,7 +880,7 @@ def get_imagenet_lt(cfg):
 
     test_dataset = ImageNet_LT(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
 
-    print('-')
+    print('-', flush=True)
 
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
@@ -1040,7 +1040,7 @@ def get_semi_imagenet(cfg):
 
     test_dataset = semi_ImageNet(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
 
-    print('-')
+    print('-', flush=True)
 
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
@@ -1088,7 +1088,7 @@ class domainnet(ImageFolder):
         self.targets = targets[idxs]
         self.imgs = None
 
-        print('-')
+        print('-', flush=True)
 
     def __getitem__(self, index):
         # image_path = self.samples[index]
@@ -1208,7 +1208,7 @@ def get_eurosat(cfg):
                                       indexs=train_unlabeled_idxs)
     test_dataset = eurosat(root=cfg.DATA.DATAPATH, transform=transform_val, indexs=test_idxs)
 
-    print('-')
+    print('-', flush=True)
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
 
@@ -1324,7 +1324,7 @@ class CUB(Dataset):
                     if not int(is_train):
                         self.data_id.append(image_id)
 
-        print('-')
+        print('-', flush=True)
 
     def __getitem__(self, index):
         image_id = self.data_id[index]
@@ -1385,7 +1385,7 @@ def get_cub(cfg):
                                       transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std))
     test_dataset = CUB(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
 
-    print('-')
+    print('-', flush=True)
 
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 

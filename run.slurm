@@ -8,7 +8,7 @@
 #SBATCH --output=slurm_log/%x.%j.out
 #SBATCH --error=slurm_log/%x.%j.err
 ##SBATCH --account=132713661936
-#SBATCH --time=10:00:00
+#SBATCH --time=23:00:00
 #SBATCH --ntasks=12
 #SBATCH --ntasks-per-node=12
 #SBATCH --nodes=1

@@ -151,14 +151,14 @@ class Trainer:
         cfg = self.cfg
         # classnames = self.classnames
 
-        print(f"Loading CLIP (backbone: {cfg.backbone})")
+        print(f"Loading CLIP (backbone: {cfg.backbone})", flush=True)
         # clip_model = load_clip_to_cpu(cfg)
         # clip_model.to(self.device)
         
         clip_model = self.clip_model.to(self.device)
         tokenizer = self.tokenizer
 
-        print(cfg.prec)
+        print(cfg.prec, flush=True)
 
         assert cfg.prec in ["fp16", "fp32", "amp"]
         if cfg.prec == "fp32" or cfg.prec == "amp":
@@ -166,8 +166,8 @@ class Trainer:
             clip_model.float()
 
         template = cfg.template or "a photo of a {}."
-        print(template)
-        print(self.classnames)
+        print(template, flush=True)
+        print(self.classnames, flush=True)
 
         # prompts = [temp.format(c.replace("_", " ")) for c in self.classnames]
         # prompts = torch.cat([clip.tokenize(p) for p in prompts])
@@ -181,13 +181,13 @@ class Trainer:
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
         self.text_features = text_features
-        print("Building model")
+        print("Building model", flush=True)
         self.model = Model(cfg, clip_model, self.text_features)
         self.tuner = self.model.tuner
         self.clip_model = clip_model
         self.dtype = next(clip_model.parameters()).dtype #clip_model.dtype
 
-        print("Turning off gradients in the model")
+        print("Turning off gradients in the model", flush=True)
         for name, param in self.model.named_parameters():
             param.requires_grad_(False)
 
@@ -195,12 +195,12 @@ class Trainer:
             param.requires_grad_(True)
 
         total_params = sum(p.numel() for p in self.model.parameters())
-        print(f'Total params: {total_params}')
+        print(f'Total params: {total_params}', flush=True)
         tuned_params = sum(p.numel() for p in self.tuner.parameters())
-        print(f'Tuned params: {tuned_params}')
+        print(f'Tuned params: {tuned_params}', flush=True)
         head_params = sum(p.numel() for p in self.tuner.head.parameters())
         tuned_params_without_head = tuned_params - head_params
-        print(f'Tuned params (w/o head): {tuned_params_without_head}')
+        print(f'Tuned params (w/o head): {tuned_params_without_head}', flush=True)
 
         self.optim = torch.optim.SGD(self.tuner.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay,
                                      momentum=cfg.momentum)
@@ -209,7 +209,7 @@ class Trainer:
 
         device_count = torch.cuda.device_count()
         if device_count > 1 and cfg.gpu is None:
-            print(f"Multiple GPUs detected (n_gpus={device_count}), use all of them!")
+            print(f"Multiple GPUs detected (n_gpus={device_count}), use all of them!", flush=True)
             self.model = nn.DataParallel(self.model)
         self.model.to(self.device)
 
@@ -226,7 +226,7 @@ class Trainer:
         # Initialize summary writer
         writer_dir = os.path.join(self.output_dir, "tensorboard")
         os.makedirs(writer_dir, exist_ok=True)
-        print(f"Initialize tensorboard (log_dir={writer_dir})")
+        print(f"Initialize tensorboard (log_dir={writer_dir})", flush=True)
         self._writer = SummaryWriter(log_dir=writer_dir)
 
         self.w_con = self.cfg.w_con
@@ -371,7 +371,7 @@ class Trainer:
                     info += [f"s {current_logit_scale:.4f}"]
                     info += [f"lr {current_lr:.4e}"]
                     info += [f"eta {eta}"]
-                    print(" ".join(info))
+                    print(" ".join(info), flush=True)
 
                 n_iter = self.epoch * self.num_batches + self.batch_idx
                 self._writer.add_scalar("train/loss", loss_meter.avg, n_iter)
@@ -398,14 +398,14 @@ class Trainer:
             best_acc = max(best_acc, acc_now)
             self.logger.append([acc_now, best_acc, self.epoch + 1])
 
-        print("Finish training")
+        print("Finish training", flush=True)
 
-        print("Deploy the last-epoch model for testing")
+        print("Deploy the last-epoch model for testing", flush=True)
 
         # Show elapsed time
         elapsed = round(time.time() - self.time_start)
         elapsed = str(datetime.timedelta(seconds=elapsed))
-        print(f"Elapsed: {elapsed}")
+        print(f"Elapsed: {elapsed}", flush=True)
 
         # Close writer
         self._writer.close()
@@ -415,7 +415,7 @@ class Trainer:
     @torch.no_grad()
     def test(self):
         self.tuner.eval()
-        print(f"Evaluate on the test set")
+        print(f"Evaluate on the test set", flush=True)
         preds = np.array([])
         targets = np.array([])
         for batch in tqdm(self.test_loader, ascii=True):
@@ -460,10 +460,10 @@ class Trainer:
 
         path = os.path.join(directory, "tuner")
         if not os.path.exists(path):
-            print("No checkpoint found, train from scratch")
+            print("No checkpoint found, train from scratch", flush=True)
             return 0
 
-        print(f"Found checkpoint at {directory} (will resume training)")
+        print(f"Found checkpoint at {directory} (will resume training)", flush=True)
 
         path = os.path.join(directory, "tuner")
         start_epoch = resume_from_checkpoint(
@@ -474,7 +474,7 @@ class Trainer:
 
     def load_model(self, directory, epoch=None):
         if not directory:
-            print("Note that load_model() is skipped as no pretrained model is given")
+            print("Note that load_model() is skipped as no pretrained model is given", flush=True)
             return
 
         # By default, the best model is loaded
@@ -499,6 +499,6 @@ class Trainer:
         if "token_suffix" in state_dict:
             del state_dict["token_suffix"]
 
-        print("Loading weights to {} " 'from "{}" (epoch = {})'.format("tuner", model_path, epoch))
+        print("Loading weights to {} " 'from "{}" (epoch = {})'.format("tuner", model_path, epoch), flush=True)
         # set strict=False
         self.tuner.load_state_dict(state_dict, strict=False)

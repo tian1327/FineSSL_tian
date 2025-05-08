@@ -24,7 +24,7 @@ def main(args):
 
     if cfg.seed is not None:
         seed = cfg.seed
-        print("Setting fixed seed: {}".format(seed))
+        print("Setting fixed seed: {}".format(seed), flush=True)
         random.seed(seed)
         np.random.seed(seed)
         os.environ['PYTHONHASHSEED'] = str(seed)
@@ -47,8 +47,8 @@ def main(args):
     # else:
     #     cfg.output_dir = os.path.join(cfg.output_dir, cfg.DATA.NAME, f"NUML{numl}_imbl{imbl}_imbu{imbu}")
 
-    print("** Config **")
-    print(cfg)
+    print("** Config **", flush=True)
+    print(cfg, flush=True)
 
     # New logic for open_clip
     backbone_key = cfg.backbone.split("_")[0]  # e.g. vitb32
