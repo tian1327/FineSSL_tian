@@ -3,6 +3,9 @@ dataset: "semi-aves"
 backbone: "vitb32_openclip_laion400m_e32"
 resolution: 224
 stride: 32
+patch_size: 32
+rand_init: False
+rand_init1: False
 
 # === Output ===
 output_dir: "out/semi-aves/N4"
@@ -11,8 +14,10 @@ print_freq: 10
 
 # === Training Settings ===
 num_epochs: 30
-lr: 0.03
-weight_decay: 5e-4
+#lr: 0.03
+# weight_decay: 5e-4
+lr: 1e-3
+weight_decay: 1e-4
 momentum: 0.9
 num_workers: 8
 prec: "fp16"  # or "amp" if you're using PyTorch AMP
