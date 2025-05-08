@@ -221,9 +221,7 @@ class ViT_Tuner(nn.Module):
         emb_dim = clip_model.visual.transformer.width
         seq_len = clip_model.visual.positional_embedding.shape[0]
         patch_size = clip_model.visual.conv1.kernel_size
-        # dtype = clip_model.dtype
-        dtype = next(clip_model.parameters()).dtype  
-
+        dtype = clip_model.dtype
 
         use_finetune = cfg.finetune
         use_bias_tuning = cfg.bias_tuning
@@ -357,17 +355,14 @@ class ViT_Tuner(nn.Module):
         # head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768).to(clip_model.dtype)
 
         if cfg.rand_init:
-            # head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768).to(clip_model.dtype)
-            head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768).to(next(clip_model.parameters()).dtype)
+            head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768).to(clip_model.dtype)
         else:
-            # head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768, text_features=text_features).to(clip_model.dtype)
-            head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768, text_features=text_features).to(next(clip_model.parameters()).dtype)
-
+            head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768, text_features=text_features).to(clip_model.dtype)
 
         if cfg.rand_init1:
-            head1 = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768).to(next(clip_model.parameters()).dtype)
+            head1 = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768).to(clip_model.dtype)
         else:
-            head1 = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768, text_features=text_features).to(next(clip_model.parameters()).dtype)
+            head1 = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768, text_features=text_features).to(clip_model.dtype)
 
         # To be optimized
         self.finetune_list = finetune_list
@@ -402,8 +397,7 @@ class CLIP_ViT(nn.Module):
         self.transformer = clip_model.visual.transformer
         self.ln_post = clip_model.visual.ln_post
         self.proj = clip_model.visual.proj
-        # self.dtype = clip_model.dtype
-        self.dtype = next(clip_model.parameters()).dtype
+        self.dtype = clip_model.dtype
 
     def forward(self, x, tuner=None):
         x = x.to(self.dtype)
@@ -542,7 +536,7 @@ class RN_Tuner(nn.Module):
     def __init__(self, cfg, clip_model, text_features):
         super().__init__()
         out_dim = clip_model.visual.output_dim
-        dtype = next(clip_model.parameters()).dtype #clip_model.dtype
+        dtype = clip_model.dtype
 
         use_finetune = cfg.finetune
         use_bias_tuning = cfg.bias_tuning
@@ -593,7 +587,7 @@ class RN_Tuner(nn.Module):
             ssf_list = None
 
         logit_scale = clip_model.logit_scale.data
-        head = RN_Head(text_features, logit_scale).to(next(clip_model.parameters()).dtype)
+        head = RN_Head(text_features, logit_scale).to(clip_model.dtype)
 
         # To be optimized
         self.finetune_list = finetune_list
@@ -618,8 +612,7 @@ class CLIP_RN(nn.Module):
         self.layer3 = clip_model.visual.layer3
         self.layer4 = clip_model.visual.layer4
         self.attnpool = clip_model.visual.attnpool
-        # self.dtype = clip_model.dtype
-        self.dtype = next(clip_model.parameters()).dtype
+        self.dtype = clip_model.dtype
     
     def forward(self, x, tuner=None):
         
@@ -644,8 +637,7 @@ class CLIP_RN(nn.Module):
 class Model(nn.Module):
     def __init__(self, cfg, clip_model, text_features):
         super().__init__()
-        backbone_name = cfg.backbone.lower()
-        if "vit" in backbone_name or "clip-vit" in backbone_name:
+        if cfg.backbone.startswith("ViT"):
             self.image_encoder = CLIP_ViT(clip_model)
             self.tuner = ViT_Tuner(cfg, clip_model, text_features)
         else:

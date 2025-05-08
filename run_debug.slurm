@@ -4,11 +4,11 @@
 #SBATCH --get-user-env=L          # Replicate login environment
 
 ##NECESSARY JOB SPECIFICATIONS
-#SBATCH --job-name=semi_aves
+#SBATCH --job-name=semi_aves_debugging
 #SBATCH --output=slurm_log/%x.%j.out
 #SBATCH --error=slurm_log/%x.%j.err
 ##SBATCH --account=132713661936
-#SBATCH --time=16:00:00
+#SBATCH --time=1:00:00
 #SBATCH --ntasks=12
 #SBATCH --ntasks-per-node=12
 #SBATCH --nodes=1
@@ -21,9 +21,7 @@
 ##SBATCH --mail-type=ALL 
 ##SBATCH --mail-user=anwesha.basu@tamu.edu
 
-export OPENCLIP_CACHE_PATH=/scratch/group/real-fs/openclip_cache
-##----------- execute bash script
-bash scripts/run_semi_aves.sh 
+python -u dry_run_debug.py
 
 ##----------- Job Environment variables
 echo "Job ID: $SLURM_JOBID"

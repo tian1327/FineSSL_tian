@@ -2,7 +2,6 @@ import logging
 import math
 
 import os
-import yaml
 import sys
 import pickle
 
@@ -21,6 +20,7 @@ from torchvision.datasets.folder import default_loader
 from torch.utils.data import Dataset
 
 import json
+import yaml
 import math
 import PIL.Image
 import copy
@@ -40,37 +40,6 @@ stl10_std = (0.2471, 0.2435, 0.2616)
 
 SVHN_mean = (0.4377, 0.4438, 0.4728)
 SVHN_std = (0.1980, 0.2010, 0.1970)
-
-
-class CustomFewShotDataset(Dataset):
-    def __init__(self, list_file, transform=None, cfg=None):
-        # Load dataset root from config.yaml
-        with open("data/config.yml", "r") as f:
-            dataset_config = yaml.safe_load(f)
-        self.cfg = cfg
-        self.root_path = dataset_config["dataset_path"]
-        self.dataset_name = self.cfg.dataset.lower()
-
-        self.samples = []
-        with open(list_file, "r") as f:
-            for line in f:
-                parts = line.strip().split()
-                if len(parts) >= 2:
-                    rel_path, label = parts[0], int(parts[1])
-                    full_path = os.path.join(self.root_path, self.dataset_name, rel_path)
-                    self.samples.append((full_path, label))
-
-        self.transform = transform
-
-    def __getitem__(self, index):
-        img_path, label = self.samples[index]
-        image = Image.open(img_path).convert("RGB")
-        if self.transform:
-            image = self.transform(image)
-        return image, label, index
-
-    def __len__(self):
-            return len(self.samples)
 
 
 def transpose(x, source='NCHW', target='NHWC'):
@@ -688,59 +657,52 @@ def get_iNaturalist(cfg):
 
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
+def read_txt_list(file_path, prefix):
+    """
+    Reads a txt file with format: relative_path class_id something_ignored
+    Returns full paths and integer class labels.
+    """
+    image_paths = []
+    labels = []
+    with open(file_path, "r") as f:
+        for line in f:
+            items = line.strip().split()
+            if len(items) < 2:
+                continue
+            rel_path, class_id = items[0], items[1]
+            image_paths.append(os.path.join(prefix, rel_path))
+            labels.append(int(class_id))
+    return np.array(image_paths), np.array(labels)
 
 class Semi_Aves(VisionDataset):
     def __init__(self, root, train=False, lab=True, out_ulab=False, transform=None, target_transform=None, indexs=None, cls_list=None, loader=default_loader):
         super(Semi_Aves, self).__init__(root, transform=transform, target_transform=target_transform)
         self.loader = loader
-        self.train = train
-        self.lab = lab
-        self.out_ulab = out_ulab
-        if self.train:
-            if self.lab:
-                jsonpath = root + '/annotation/anno_l_train.json'
-            else:
-                jsonpath = root + '/annotation/anno_u_train_in.json'
+
+        # Load dataset_path from global config
+        with open(os.path.join("data", "config.yml"), "r") as f:
+            config = yaml.safe_load(f)
+        dataset_path = config["dataset_path"]  # e.g., /scratch/group/real-fs/dataset/
+        full_prefix = os.path.join(dataset_path, "semi-aves")
+
+        # Choose the appropriate file
+        if train and lab:
+            list_file = os.path.join(root, "ltrain.txt")
+        elif train and not lab:
+            list_file = os.path.join(root, "u_train_in.txt")
         else:
-            jsonpath = root + '/annotation/anno_test.json'
+            list_file = os.path.join(root, "test.txt")
 
-        with open(jsonpath) as f:
-            data = f.read()
+                # Load class names from JSON if available
+        if train and lab:
+            metrics_json = os.path.join(root, "semi-aves_metrics-LAION400M.json")
+            if os.path.exists(metrics_json):
+                with open(metrics_json, "r") as f:
+                    metrics = json.load(f)
+                self.classes = [metrics[str(i)]["most_common_name"] for i in range(len(metrics))]
 
-        result = json.loads(data)
-
-        if self.train and self.lab:
-            namepath = root + '/annotation/semi_aves_class_names.txt'
-            classes = np.loadtxt(namepath, dtype=str)
-            classes = classes[:, 1]
-            for i in range(len(classes)):
-                classes[i] = classes[i].replace('_', ' ')
-            # print(classes, flush=True)
-            self.classes = classes
-
-        self.samples = [root + '/' + item['file_name'] for item in result['images']]
-        if self.train:
-            self.targets = [item['category_id'] for item in result['annotations']]
-            self.targets = np.array(self.targets)
-        else:
-            self.targets = np.loadtxt(root + '/annotation/solution.csv', delimiter=',', skiprows=1)
-            self.targets = self.targets[:, 1].astype(int)
-
-        self.samples = np.array(self.samples)
-
-        if self.out_ulab:
-            jsonpath_out = root + '/annotation/anno_u_train_out.json'
-            with open(jsonpath_out) as f:
-                data = f.read()
-            result_out = json.loads(data)
-
-            self.samples_out = [root + '/' + item['file_name'] for item in result_out['images']]
-            self.samples_out = np.array(self.samples_out)
-            self.samples = np.concatenate((self.samples, self.samples_out))
-
-            self.targets_out = [item['category_id'] for item in result_out['annotations']]
-            self.targets_out = np.array(self.targets_out)
-            self.targets = np.concatenate((self.targets, self.targets_out))
+        # Load samples and targets
+        self.samples, self.targets = read_txt_list(list_file, full_prefix)
 
         if indexs is not None:
             self.samples = self.samples[indexs]
@@ -763,19 +725,8 @@ class Semi_Aves(VisionDataset):
 def get_semi_aves(cfg):
     resize_dim = 256
     crop_dim = 224
-    # dataset_mean = (0.485, 0.456, 0.406)
-    # dataset_std = (0.229, 0.224, 0.225)
-
     dataset_mean=(0.48145466, 0.4578275, 0.40821073)
     dataset_std=(0.26862954, 0.26130258, 0.27577711)
-
-    dataset_name = cfg.dataset.lower()
-    shots = cfg.DATA.SHOTS
-    seed = cfg.DATA.SEED
-
-    fewshot_file = f"data/{dataset_name}/fewshot{shots}_seed{seed}.txt"
-    unlabeled_file = f"data/{dataset_name}/u_train_in.txt"
-    test_file = f"data/{dataset_name}/test.txt"
 
     transform_labeled = transforms.Compose([
         transforms.Resize(resize_dim),
@@ -791,19 +742,12 @@ def get_semi_aves(cfg):
         transforms.ToTensor(),
         transforms.Normalize(mean=dataset_mean, std=dataset_std)])
 
-    transform_unlabeled = TransformFixMatch_ws(mean=dataset_mean, std=dataset_std)
+    train_labeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=True, transform=transform_labeled)
 
+    train_unlabeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=False, out_ulab=cfg.DATA.out_ulab,
+                                          transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std))
 
-    # train_labeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=True, transform=transform_labeled)
-
-    # train_unlabeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=False, out_ulab=cfg.DATA.out_ulab,
-    #                                       transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std))
-
-    # test_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
-
-    train_labeled_dataset = CustomFewShotDataset(fewshot_file, transform=transform_labeled, cfg=cfg)
-    train_unlabeled_dataset = CustomFewShotDataset(unlabeled_file, transform=transform_unlabeled, cfg=cfg)
-    test_dataset = CustomFewShotDataset(test_file, transform=transform_val, cfg=cfg)
+    test_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
 
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
@@ -1415,11 +1359,11 @@ DATASET_GETTERS = {'CIFAR10': get_cifar10,
                    'FOOD101': get_food101,
                    'IMAGENET': get_imagenet,
                    'iNaturalist': get_iNaturalist,
-                   'semi-aves': get_semi_aves,
+                   'Semi_Aves': get_semi_aves,
                    'ImageNet-LT': get_imagenet_lt,
                    'semi_ImageNet': get_semi_imagenet,
                    'DomainNet': get_domainnet,
-                   'eurosat': get_eurosat,
+                   'EuroSAT': get_eurosat,
                    'CIFAR100-C': get_cifar100_c,
                    'CUB': get_cub}
 

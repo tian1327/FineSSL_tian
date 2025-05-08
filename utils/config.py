@@ -77,9 +77,6 @@ _C.DATA.IMB_U = 1.0
 _C.DATA.MU_U = 2
 _C.DATA.LABEL_RATIO = 0.01
 _C.DATA.out_ulab = False
-_C.DATA.SHOTS = 4
-_C.DATA.SEED = 1 
-
 _C.block_num = None
 
 _C.th = 0.7
