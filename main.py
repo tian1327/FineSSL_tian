@@ -9,7 +9,6 @@ from utils.logger import setup_logger
 
 # from trainer import Trainer
 
-
 def main(args):
     cfg.defrost()
     cfg.merge_from_file(args.cfg)
@@ -49,6 +48,9 @@ def main(args):
     print("** Config **", flush=True)
     print(cfg, flush=True)
 
+    setup_logger(cfg.output_dir)
+    trainer = Trainer(cfg)
+
     if cfg.eval_only:
         cfg.model_dir = cfg.model_dir if cfg.model_dir is not None else cfg.output_dir
         cfg.load_epoch = cfg.load_epoch if cfg.load_epoch is not None else cfg.num_epochs
@@ -56,8 +58,6 @@ def main(args):
         trainer.test()
         return
 
-    setup_logger(cfg.output_dir)
-    trainer = Trainer(cfg)
 
     if args.dry_run:
         trainer.build_data_loader()

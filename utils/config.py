@@ -5,6 +5,9 @@ _C = CN()
 _C.dataset = ""  # Dataset name
 _C.root = ""  # Directory where datasets are stored
 _C.backbone = ""
+_C.backbone_source = "openai"
+_C.is_fewshot = False
+_C.fewshot_file_path = ""
 _C.resolution = 224
 _C.stride = 16
 

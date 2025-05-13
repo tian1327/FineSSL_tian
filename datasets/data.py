@@ -675,7 +675,7 @@ def read_txt_list(file_path, prefix):
     return np.array(image_paths), np.array(labels)
 
 class Semi_Aves(VisionDataset):
-    def __init__(self, root, train=False, lab=True, out_ulab=False, transform=None, target_transform=None, indexs=None, cls_list=None, loader=default_loader):
+    def __init__(self, root, train=False, lab=True, fewshot_file_path = "", out_ulab=False, transform=None, target_transform=None, indexs=None, cls_list=None, loader=default_loader):
         super(Semi_Aves, self).__init__(root, transform=transform, target_transform=target_transform)
         self.loader = loader
 
@@ -687,11 +687,17 @@ class Semi_Aves(VisionDataset):
 
         # Choose the appropriate file
         if train and lab:
-            list_file = os.path.join(root, "ltrain.txt")
+            if fewshot_file_path != "":
+                list_file = os.path.join(root, fewshot_file_path)
+            else:
+                list_file = os.path.join(root, "ltrain.txt")
+            print(f"Loading labeled data from {list_file}")
         elif train and not lab:
             list_file = os.path.join(root, "u_train_in.txt")
+            print(f"Loading unlabeled data from {list_file}")
         else:
             list_file = os.path.join(root, "test.txt")
+            print(f"Loading test data from {list_file}")
 
                 # Load class names from JSON if available
         if train and lab:
@@ -742,7 +748,10 @@ def get_semi_aves(cfg):
         transforms.ToTensor(),
         transforms.Normalize(mean=dataset_mean, std=dataset_std)])
 
-    train_labeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=True, transform=transform_labeled)
+    if cfg.is_fewshot:
+        train_labeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=True, fewshot_file_path=cfg.fewshot_file_path, transform=transform_labeled)
+    else:
+        train_labeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=True, transform=transform_labeled)
 
     train_unlabeled_dataset = Semi_Aves(root=cfg.DATA.DATAPATH, train=True, lab=False, out_ulab=cfg.DATA.out_ulab,
                                           transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std))

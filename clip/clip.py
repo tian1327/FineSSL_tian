@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from .model import build_model
 from .simple_tokenizer import SimpleTokenizer as _Tokenizer
+import open_clip
 
 try:
     from torchvision.transforms import InterpolationMode
@@ -218,3 +219,24 @@ def tokenize(texts: Union[str, List[str]], context_length: int = 77, truncate: b
         result[i, :len(tokens)] = torch.tensor(tokens)
 
     return result
+
+
+def load_openclip_model(backbone="ViT-B-32", pretrained="laion400m_e32", device="cpu"):
+    cache_dir = os.environ.get("OPENCLIP_CACHE_PATH", None)
+    model, _, preprocess = open_clip.create_model_and_transforms(
+        model_name=backbone,
+        pretrained=pretrained,
+        device=device,
+        cache_dir=cache_dir
+    )
+    tokenizer = open_clip.get_tokenizer(backbone)
+    # Manually attach dtype
+    try:
+        model.dtype = model.visual.transformer.blocks[0].mlp.fc1.weight.dtype
+    except AttributeError:
+        try:
+            model.dtype = model.visual.blocks[0].mlp.fc1.weight.dtype
+        except AttributeError:
+            model.dtype = next(model.parameters()).dtype
+    return model, tokenizer
+

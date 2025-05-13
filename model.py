@@ -217,11 +217,39 @@ class ViT_Head_v0(nn.Module):
 class ViT_Tuner(nn.Module):
     def __init__(self, cfg, clip_model, text_features):
         super().__init__()
-        n_layers = clip_model.visual.transformer.layers
-        emb_dim = clip_model.visual.transformer.width
+        # n_layers = clip_model.visual.transformer.layers
+        # emb_dim = clip_model.visual.transformer.width
+        # seq_len = clip_model.visual.positional_embedding.shape[0]
+        # patch_size = clip_model.visual.conv1.kernel_size
+        # blocks = clip_model.visual.transformer.resblocks
+        # dtype = clip_model.dtype
+
+        source = getattr(cfg, "backbone_source", "openai")
+
+        if source == "openai":
+            n_layers = clip_model.visual.transformer.layers
+            emb_dim = clip_model.visual.transformer.width
+            patch_size = clip_model.visual.conv1.kernel_size
+            blocks = clip_model.visual.transformer.resblocks
+        elif source == "openclip":
+            # OpenCLIP uses slightly different attribute names
+            if hasattr(clip_model.visual.transformer, "resblocks"):
+                blocks = clip_model.visual.transformer.resblocks
+            elif hasattr(clip_model.visual.transformer, "blocks"):
+                blocks = clip_model.visual.transformer.blocks
+            else:
+                raise AttributeError("No 'resblocks' or 'blocks' found in transformer.")
+            n_layers = len(blocks)
+            emb_dim = clip_model.visual.class_embedding.shape[-1]
+            patch_size = tuple(clip_model.visual.conv1.kernel_size) 
+            # blocks = clip_model.visual.transformer.blocks
+        else:
+            raise ValueError(f"Unsupported backbone_source: {source}")
         seq_len = clip_model.visual.positional_embedding.shape[0]
-        patch_size = clip_model.visual.conv1.kernel_size
         dtype = clip_model.dtype
+
+        print(f"[ViT_Tuner] Detected CLIP source: {source}, Layers: {n_layers}, Embedding Dim: {emb_dim}")
+
 
         use_finetune = cfg.finetune
         use_bias_tuning = cfg.bias_tuning
@@ -253,7 +281,6 @@ class ViT_Tuner(nn.Module):
             for i in range(block_num):
                 block_list.append(init_block - i)
 
-        blocks = clip_model.visual.transformer.resblocks
 
         if use_finetune:
             if block_num is None:
@@ -355,14 +382,18 @@ class ViT_Tuner(nn.Module):
         # head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768).to(clip_model.dtype)
 
         if cfg.rand_init:
-            head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768).to(clip_model.dtype)
+            # head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768).to(clip_model.dtype)
+            head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, visual_proj.shape[1]).to(clip_model.dtype)
         else:
-            head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768, text_features=text_features).to(clip_model.dtype)
+            # head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768, text_features=text_features).to(clip_model.dtype)
+            head = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, visual_proj.shape[1], text_features=text_features).to(clip_model.dtype)
 
         if cfg.rand_init1:
-            head1 = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768).to(clip_model.dtype)
+            # head1 = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768).to(clip_model.dtype)
+            head1 = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, visual_proj.shape[1]).to(clip_model.dtype)
         else:
-            head1 = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768, text_features=text_features).to(clip_model.dtype)
+            # head1 = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, 768, text_features=text_features).to(clip_model.dtype)
+            head1 = ViT_Head(cfg.DATA.NUMBER_CLASSES, visual_proj, visual_proj.shape[1], text_features=text_features).to(clip_model.dtype)
 
         # To be optimized
         self.finetune_list = finetune_list
@@ -516,6 +547,139 @@ class CLIP_ViT(nn.Module):
         x = self.ln_post(x[:, 0, :])
         return x
 
+class OpenCLIP_ViT(nn.Module):
+    def __init__(self, clip_model):
+        super().__init__()
+        visual = clip_model.visual
+
+        self.conv1 = visual.conv1
+        self.class_embedding = visual.class_embedding
+        self.positional_embedding = visual.positional_embedding
+        self.ln_pre = visual.ln_pre
+        self.transformer = visual.transformer
+        self.ln_post = visual.ln_post
+        self.proj = visual.proj
+        self.dtype = clip_model.dtype
+
+    def forward(self, x, tuner=None):
+        x = x.to(self.dtype)
+        x = self.conv1(x)  # [B, C, H/patch, W/patch]
+        x = x.flatten(2).transpose(1, 2)  # [B, N, C]
+
+        cls_token = self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device)
+        x = torch.cat([cls_token, x], dim=1)
+
+        x = x + self.positional_embedding[:x.size(1), :].to(x.dtype)
+        x = self.ln_pre(x)
+
+        _bsz = x.shape[0]
+        _seq_len = x.shape[1]
+        _emb_dim = x.shape[2]
+
+        n_layers = self.transformer.layers
+
+        for i in range(n_layers):
+            block = self.transformer.resblocks[i]
+
+            if tuner is not None:
+                vpt = tuner.vpt_list[i]
+                adapter = tuner.adapter_list[i]
+                lora = tuner.lora_list[i]
+                ssf = tuner.ssf_list[i]
+                adaptformer = tuner.adaptformer_list[i]
+            else:
+                vpt = adapter = lora = ssf = adaptformer = None
+
+            if vpt is not None:
+                x = vpt(x)
+
+            _seq_len_after_vpt = x.shape[1]
+
+            x = x.permute(1, 0, 2)  # NLD -> LND
+
+            _attn = block.attn
+            _ln_1 = block.ln_1
+            _mlp = block.mlp
+            _ln_2 = block.ln_2
+
+            _attn_in_proj_weight = _attn.in_proj_weight
+            _attn_in_proj_bias = _attn.in_proj_bias
+            _attn_out_proj_weight = _attn.out_proj.weight
+            _attn_out_proj_bias = _attn.out_proj.bias
+            _mlp_in_proj = _mlp[0]
+            _mlp_gelu = _mlp[1]
+            _mlp_out_proj = _mlp[2]
+
+            _num_heads = _attn.num_heads
+            _head_dim = _emb_dim // _num_heads
+
+            ###############################
+            ## Multi-Head Self-Attention ##
+            ###############################
+            residual = x
+
+            x = _ln_1(x)
+
+            qkv = F.linear(x, _attn_in_proj_weight, _attn_in_proj_bias)
+            if ssf is not None:
+                qkv = ssf["attn_in"](qkv)
+            q, k, v = qkv.chunk(3, dim=-1)
+
+            if lora is not None:
+                q = q + lora["q"](x)
+                v = v + lora["v"](x)
+
+            q = q.contiguous().view(q.shape[0], q.shape[1] * _num_heads, _head_dim).transpose(0, 1)
+            k = k.contiguous().view(k.shape[0], k.shape[1] * _num_heads, _head_dim).transpose(0, 1)
+            v = v.contiguous().view(v.shape[0], v.shape[1] * _num_heads, _head_dim).transpose(0, 1)
+
+            q = q / math.sqrt(_head_dim)
+            attn = torch.bmm(q, k.transpose(-2, -1))
+            attn = F.softmax(attn, dim=-1)
+            x = torch.bmm(attn, v)
+            x = x.transpose(0, 1).contiguous().view(-1, _emb_dim)
+
+            x = F.linear(x, _attn_out_proj_weight, _attn_out_proj_bias)
+            if ssf is not None:
+                x = ssf["attn_out"](x)
+            x = x.view(_seq_len_after_vpt, _bsz, _emb_dim)
+
+            x = residual + x
+
+            if adaptformer is not None:
+                adapt_x = adaptformer(x, add_residual=False)
+
+            ##########################
+            ## Feed-Forward Network ##
+            ##########################
+            residual = x
+            x = _ln_2(x)
+
+            x = _mlp_in_proj(x)
+            if ssf is not None:
+                x = ssf["mlp_in"](x)
+            x = _mlp_gelu(x)
+            x = _mlp_out_proj(x)
+            if ssf is not None:
+                x = ssf["mlp_out"](x)
+
+            if adapter is not None:
+                x = adapter(x)
+
+            if adaptformer is not None:
+                if tuner.ffn_opt == "parallel":
+                    x = x + adapt_x
+                elif tuner.ffn_opt == "sequential":
+                    x = adaptformer(x)
+
+            x = residual + x
+            x = x.permute(1, 0, 2)  # LND -> NLD
+
+        x = self.ln_post(x[:, 0, :])
+        if self.proj is not None:
+            x = x @ self.proj
+        return x
+
 
 class RN_Head(nn.Module):
     def __init__(self, text_features, logit_scale):
@@ -635,15 +799,29 @@ class CLIP_RN(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, cfg, clip_model, text_features):
+    def __init__(self, cfg, clip_model, text_features=None):
         super().__init__()
-        if cfg.backbone.startswith("ViT"):
+
+        source = cfg.backbone_source
+        self.tuner = None
+        self.cfg = cfg
+
+        if source == "openclip":
+            self.image_encoder = OpenCLIP_ViT(clip_model)
+            self.tuner = ViT_Tuner(cfg, clip_model, text_features)
+        elif source == "openai":
             self.image_encoder = CLIP_ViT(clip_model)
             self.tuner = ViT_Tuner(cfg, clip_model, text_features)
-        else:
+        elif source == "openai_rn":
             self.image_encoder = CLIP_RN(clip_model)
-            self.tuner = RN_Tuner(cfg, clip_model)
+            self.tuner = RN_Tuner(cfg, clip_model, text_features)
+        else:
+            raise ValueError(f"Unsupported backbone_source: {source}")
 
     def forward(self, image):
         feat = self.image_encoder(image, self.tuner)
+        # Apply proj only for OpenAI CLIP
+        if self.cfg.backbone_source == "openai":
+            if hasattr(self.image_encoder, "proj") and self.image_encoder.proj is not None:
+                feat = feat @ self.image_encoder.proj
         return feat

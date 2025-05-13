@@ -124,9 +124,15 @@ class Trainer:
     def build_model(self):
         cfg = self.cfg
         # classnames = self.classnames
-
         print(f"Loading CLIP (backbone: {cfg.backbone})", flush=True)
-        clip_model = load_clip_to_cpu(cfg)
+        if getattr(cfg, "backbone_source", "openai") == "openclip":
+            clip_model, tokenizer = clip.load_openclip_model(
+                cfg.backbone, pretrained="laion400m_e32", device=self.device
+            )
+        else:
+            clip_model = load_clip_to_cpu(cfg)
+            tokenizer = clip.tokenize
+
         clip_model.to(self.device)
 
         print(cfg.prec, flush=True)
@@ -143,9 +149,12 @@ class Trainer:
         print(temp, flush=True)
         print(self.classnames, flush=True)
         prompts = [temp.format(c.replace("_", " ")) for c in self.classnames]
-        # prompts = [c for c in self.classnames]
-        prompts = torch.cat([clip.tokenize(p) for p in prompts])
+        
+        # prompts = torch.cat([clip.tokenize(p) for p in prompts])
+        # prompts = prompts.to(self.device)
+        prompts = tokenizer(prompts) if callable(tokenizer) else torch.cat([tokenizer(p) for p in prompts])
         prompts = prompts.to(self.device)
+
 
         with torch.no_grad():
             text_features = clip_model.encode_text(prompts)
@@ -317,9 +326,16 @@ class Trainer:
                 loss.backward()
                 self.optim.step()
 
+                with torch.no_grad():
+                    pred = output_x.argmax(dim=1)
+                    correct = pred.eq(targets_x).float()
+                    acc = correct.mean().mul_(100.0)
+
                 current_logit_scale = self.tuner.head.logit_scale.item()
                 current_lr = self.optim.param_groups[0]["lr"]
                 loss_meter.update(loss.item())
+                
+                acc_meter.update(acc.item())
 
                 batch_time.update(time.time() - end)
 
@@ -406,7 +422,7 @@ class Trainer:
         targets = targets.astype(int)
         preds = preds.astype(int)
         acc = sum(targets == preds) / len(targets)
-
+        print(f"Final Test Accuracy: {acc:.4f}", flush=True)
         return acc
 
     def save_model(self, epoch, directory, is_best=False, val_result=None, model_name=""):

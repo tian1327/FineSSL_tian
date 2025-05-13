@@ -1,9 +1,12 @@
 dataset: "Semi_Aves"
 root: "data/semi-aves"
 backbone: "ViT-B/16"
-backbone_source: "openai"
 resolution: 224
 stride: 16
+
+eval_only: True
+model_dir: "./output/semi_aves/epoch_30"
+load_epoch: 30
 
 output_dir: null
 resume: null
@@ -18,6 +21,7 @@ prec: "fp16"
 
 num_epochs: 30
 lr: 0.03 
+# lr: 0.003 # Old Rate
 weight_decay: 5e-4
 momentum: 0.9
 

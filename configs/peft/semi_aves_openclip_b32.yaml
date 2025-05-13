@@ -1,9 +1,9 @@
 dataset: "Semi_Aves"
 root: "data/semi-aves"
-backbone: "ViT-B/16"
-backbone_source: "openai"
+backbone: "ViT-B-32"
+backbone_source: "openclip"
 resolution: 224
-stride: 16
+stride: 32
 
 output_dir: null
 resume: null
