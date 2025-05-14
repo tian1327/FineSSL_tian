@@ -4,7 +4,7 @@ echo "Starting Semi-Aves training run..."
 echo "Running on host: $(hostname)"
 echo "CUDA devices: $CUDA_VISIBLE_DEVICES"
 echo "Current directory: $(pwd)"
-echo "Using config: configs/semi_aves.yaml"
+echo "Using config: configs/semi_aves_openclip_b16.yaml"
 echo "Time: $(date)"
 
 

@@ -761,6 +761,94 @@ def get_semi_aves(cfg):
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
 
+
+class DTD(VisionDataset):
+    def __init__(self, root, train=False, lab=True, fewshot_file_path = "", out_ulab=False, transform=None, target_transform=None, indexs=None, cls_list=None, loader=default_loader):
+        super(DTD, self).__init__(root, transform=transform, target_transform=target_transform)
+        self.loader = loader
+
+        # Load dataset_path from global config
+        with open(os.path.join("data", "config.yml"), "r") as f:
+            config = yaml.safe_load(f)
+        dataset_path = config["dataset_path"]  # e.g., /scratch/group/real-fs/dataset/
+        full_prefix = os.path.join(dataset_path, "dtd")
+
+        # Choose the appropriate file
+        if train and lab:
+            if fewshot_file_path != "":
+                list_file = os.path.join(root, fewshot_file_path)
+            else:
+                list_file = os.path.join(root, "train.txt")
+            print(f"Loading labeled data from {list_file}")
+        elif train and not lab:
+            list_file = os.path.join(root, "u_train_in.txt")
+            print(f"Loading unlabeled data from {list_file}")
+        else:
+            list_file = os.path.join(root, "test.txt")
+            print(f"Loading test data from {list_file}")
+
+        # Load class names from JSON if available
+        if train and lab:
+            metrics_json = os.path.join(root, "dtd_metrics-LAION400M.json")
+            if os.path.exists(metrics_json):
+                with open(metrics_json, "r") as f:
+                    metrics = json.load(f)
+                self.classes = [metrics[str(i)]["most_common_name"] for i in range(len(metrics))]
+
+        # Load samples and targets
+        self.samples, self.targets = read_txt_list(list_file, full_prefix)
+
+        if indexs is not None:
+            self.samples = self.samples[indexs]
+            self.targets = self.targets[indexs]
+
+    def __getitem__(self, index):
+        image_path = self.samples[index]
+        target = self.targets[index]
+        image = self.loader(image_path)
+        if self.transform is not None:
+            image = self.transform(image)
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+        return image, target, index
+
+    def __len__(self):
+        return len(self.samples)
+
+
+def get_dtd(cfg):
+    resize_dim = 256
+    crop_dim = 224
+    dataset_mean=(0.48145466, 0.4578275, 0.40821073)
+    dataset_std=(0.26862954, 0.26130258, 0.27577711)
+
+    transform_labeled = transforms.Compose([
+        transforms.Resize(resize_dim),
+        transforms.RandomCrop(size=crop_dim,
+                              padding=int(crop_dim * 0.125),
+                              padding_mode='reflect'),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=dataset_mean, std=dataset_std)])
+
+    transform_val = transforms.Compose([
+        transforms.Resize((crop_dim, crop_dim)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=dataset_mean, std=dataset_std)])
+
+    if cfg.is_fewshot:
+        train_labeled_dataset = DTD(root=cfg.DATA.DATAPATH, train=True, lab=True, fewshot_file_path=cfg.fewshot_file_path, transform=transform_labeled)
+    else:
+        train_labeled_dataset = DTD(root=cfg.DATA.DATAPATH, train=True, lab=True, transform=transform_labeled)
+
+    train_unlabeled_dataset = DTD(root=cfg.DATA.DATAPATH, train=True, lab=False, out_ulab=cfg.DATA.out_ulab,
+                                          transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std))
+
+    test_dataset = DTD(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
+
+    return train_labeled_dataset, train_unlabeled_dataset, test_dataset
+
+
 class ImageNet_LT(ImageFolder):
     def __init__(self, root, train=False, transform=None, target_transform=None, indexs=None, loader=default_loader):
         self.train = train
@@ -1103,12 +1191,12 @@ def eurosat_split(labels, Nlab, Nulab, Ntest, cfg):
     return train_labeled_idxs, train_unlabeled_idxs, test_idxs
 
 
-class eurosat(ImageFolder):
+class eurosat_old(ImageFolder):
     def __init__(self, root, transform=None, target_transform=None, indexs=None, loader=default_loader):
         # self.train = train
         self.loader = loader
 
-        super(eurosat, self).__init__(root, transform=transform, target_transform=target_transform)
+        super(eurosat_old, self).__init__(root, transform=transform, target_transform=target_transform)
 
         if indexs is not None:
             indexs = np.array(indexs)
@@ -1131,7 +1219,7 @@ class eurosat(ImageFolder):
         return len(self.samples)
 
 
-def get_eurosat(cfg):
+def get_eurosat_old(cfg):
     resize_dim = 256
     crop_dim = 224
     dataset_mean = (0.485, 0.456, 0.406)
@@ -1151,15 +1239,15 @@ def get_eurosat(cfg):
         transforms.ToTensor(),
         transforms.Normalize(mean=dataset_mean, std=dataset_std)])
 
-    base_dataset = eurosat(root=cfg.DATA.DATAPATH)
+    base_dataset = eurosat_old(root=cfg.DATA.DATAPATH)
 
     train_labeled_idxs, train_unlabeled_idxs, test_idxs = \
         eurosat_split(base_dataset.targets, cfg.DATA.NUM_L, cfg.DATA.NUM_U, cfg.DATA.NUM_Test, cfg)
 
-    train_labeled_dataset = eurosat(root=cfg.DATA.DATAPATH, transform=transform_labeled, indexs=train_labeled_idxs)
-    train_unlabeled_dataset = eurosat(root=cfg.DATA.DATAPATH, transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std),
+    train_labeled_dataset = eurosat_old(root=cfg.DATA.DATAPATH, transform=transform_labeled, indexs=train_labeled_idxs)
+    train_unlabeled_dataset = eurosat_old(root=cfg.DATA.DATAPATH, transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std),
                                       indexs=train_unlabeled_idxs)
-    test_dataset = eurosat(root=cfg.DATA.DATAPATH, transform=transform_val, indexs=test_idxs)
+    test_dataset = eurosat_old(root=cfg.DATA.DATAPATH, transform=transform_val, indexs=test_idxs)
 
     print('-', flush=True)
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
@@ -1343,6 +1431,269 @@ def get_cub(cfg):
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
 
+class eurosat(VisionDataset):
+    def __init__(self, root, train=False, lab=True, fewshot_file_path = "", out_ulab=False, transform=None, target_transform=None, indexs=None, cls_list=None, loader=default_loader):
+        super(eurosat, self).__init__(root, transform=transform, target_transform=target_transform)
+        self.loader = loader
+
+        # Load dataset_path from global config
+        with open(os.path.join("data", "config.yml"), "r") as f:
+            config = yaml.safe_load(f)
+        dataset_path = config["dataset_path"]  # e.g., /scratch/group/real-fs/dataset/
+        full_prefix = os.path.join(dataset_path, "eurosat")
+
+        # Choose the appropriate file
+        if train and lab:
+            if fewshot_file_path != "":
+                list_file = os.path.join(root, fewshot_file_path)
+            else:
+                list_file = os.path.join(root, "train.txt")
+            print(f"Loading labeled data from {list_file}")
+        elif train and not lab:
+            list_file = os.path.join(root, "u_train_in.txt")
+            print(f"Loading unlabeled data from {list_file}")
+        else:
+            list_file = os.path.join(root, "test.txt")
+            print(f"Loading test data from {list_file}")
+
+        # Load class names from JSON if available
+        if train and lab:
+            metrics_json = os.path.join(root, "eurosat_metrics-LAION400M.json")
+            if os.path.exists(metrics_json):
+                with open(metrics_json, "r") as f:
+                    metrics = json.load(f)
+                self.classes = [metrics[str(i)]["most_common_name"] for i in range(len(metrics))]
+
+        # Load samples and targets
+        self.samples, self.targets = read_txt_list(list_file, full_prefix)
+
+        if indexs is not None:
+            self.samples = self.samples[indexs]
+            self.targets = self.targets[indexs]
+
+    def __getitem__(self, index):
+        image_path = self.samples[index]
+        target = self.targets[index]
+        image = self.loader(image_path)
+        if self.transform is not None:
+            image = self.transform(image)
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+        return image, target, index
+
+    def __len__(self):
+        return len(self.samples)
+
+
+def get_eurosat(cfg):
+    resize_dim = 256
+    crop_dim = 224
+    dataset_mean=(0.48145466, 0.4578275, 0.40821073)
+    dataset_std=(0.26862954, 0.26130258, 0.27577711)
+
+    transform_labeled = transforms.Compose([
+        transforms.Resize(resize_dim),
+        transforms.RandomCrop(size=crop_dim,
+                              padding=int(crop_dim * 0.125),
+                              padding_mode='reflect'),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=dataset_mean, std=dataset_std)])
+
+    transform_val = transforms.Compose([
+        transforms.Resize((crop_dim, crop_dim)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=dataset_mean, std=dataset_std)])
+
+    if cfg.is_fewshot:
+        train_labeled_dataset = eurosat(root=cfg.DATA.DATAPATH, train=True, lab=True, fewshot_file_path=cfg.fewshot_file_path, transform=transform_labeled)
+    else:
+        train_labeled_dataset = eurosat(root=cfg.DATA.DATAPATH, train=True, lab=True, transform=transform_labeled)
+
+    train_unlabeled_dataset = eurosat(root=cfg.DATA.DATAPATH, train=True, lab=False, out_ulab=cfg.DATA.out_ulab,
+                                          transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std))
+
+    test_dataset = eurosat(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
+
+    return train_labeled_dataset, train_unlabeled_dataset, test_dataset
+
+
+class fgvc_aircraft(VisionDataset):
+    def __init__(self, root, train=False, lab=True, fewshot_file_path = "", out_ulab=False, transform=None, target_transform=None, indexs=None, cls_list=None, loader=default_loader):
+        super(fgvc_aircraft, self).__init__(root, transform=transform, target_transform=target_transform)
+        self.loader = loader
+
+        # Load dataset_path from global config
+        with open(os.path.join("data", "config.yml"), "r") as f:
+            config = yaml.safe_load(f)
+        dataset_path = config["dataset_path"]  # e.g., /scratch/group/real-fs/dataset/
+        full_prefix = os.path.join(dataset_path, "fgvc-aircraft")
+
+        # Choose the appropriate file
+        if train and lab:
+            if fewshot_file_path != "":
+                list_file = os.path.join(root, fewshot_file_path)
+            else:
+                list_file = os.path.join(root, "train.txt")
+            print(f"Loading labeled data from {list_file}")
+        elif train and not lab:
+            list_file = os.path.join(root, "u_train_in.txt")
+            print(f"Loading unlabeled data from {list_file}")
+        else:
+            list_file = os.path.join(root, "test.txt")
+            print(f"Loading test data from {list_file}")
+
+        # Load class names from JSON if available
+        if train and lab:
+            metrics_json = os.path.join(root, "fgvc-aircraft_metrics-LAION400M.json")
+            if os.path.exists(metrics_json):
+                with open(metrics_json, "r") as f:
+                    metrics = json.load(f)
+                self.classes = [metrics[str(i)]["most_common_name"] for i in range(len(metrics))]
+
+        # Load samples and targets
+        self.samples, self.targets = read_txt_list(list_file, full_prefix)
+
+        if indexs is not None:
+            self.samples = self.samples[indexs]
+            self.targets = self.targets[indexs]
+
+    def __getitem__(self, index):
+        image_path = self.samples[index]
+        target = self.targets[index]
+        image = self.loader(image_path)
+        if self.transform is not None:
+            image = self.transform(image)
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+        return image, target, index
+
+    def __len__(self):
+        return len(self.samples)
+
+
+def get_fgvc_aircraft(cfg):
+    resize_dim = 256
+    crop_dim = 224
+    dataset_mean=(0.48145466, 0.4578275, 0.40821073)
+    dataset_std=(0.26862954, 0.26130258, 0.27577711)
+
+    transform_labeled = transforms.Compose([
+        transforms.Resize(resize_dim),
+        transforms.RandomCrop(size=crop_dim,
+                              padding=int(crop_dim * 0.125),
+                              padding_mode='reflect'),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=dataset_mean, std=dataset_std)])
+
+    transform_val = transforms.Compose([
+        transforms.Resize((crop_dim, crop_dim)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=dataset_mean, std=dataset_std)])
+
+    if cfg.is_fewshot:
+        train_labeled_dataset = fgvc_aircraft(root=cfg.DATA.DATAPATH, train=True, lab=True, fewshot_file_path=cfg.fewshot_file_path, transform=transform_labeled)
+    else:
+        train_labeled_dataset = fgvc_aircraft(root=cfg.DATA.DATAPATH, train=True, lab=True, transform=transform_labeled)
+
+    train_unlabeled_dataset = fgvc_aircraft(root=cfg.DATA.DATAPATH, train=True, lab=False, out_ulab=cfg.DATA.out_ulab,
+                                          transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std))
+
+    test_dataset = fgvc_aircraft(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
+
+    return train_labeled_dataset, train_unlabeled_dataset, test_dataset
+
+
+
+class stanford_cars(VisionDataset):
+    def __init__(self, root, train=False, lab=True, fewshot_file_path = "", out_ulab=False, transform=None, target_transform=None, indexs=None, cls_list=None, loader=default_loader):
+        super(stanford_cars, self).__init__(root, transform=transform, target_transform=target_transform)
+        self.loader = loader
+
+        # Load dataset_path from global config
+        with open(os.path.join("data", "config.yml"), "r") as f:
+            config = yaml.safe_load(f)
+        dataset_path = config["dataset_path"]  # e.g., /scratch/group/real-fs/dataset/
+        full_prefix = os.path.join(dataset_path, "stanford_cars")
+
+        # Choose the appropriate file
+        if train and lab:
+            if fewshot_file_path != "":
+                list_file = os.path.join(root, fewshot_file_path)
+            else:
+                list_file = os.path.join(root, "train.txt")
+            print(f"Loading labeled data from {list_file}")
+        elif train and not lab:
+            list_file = os.path.join(root, "u_train_in.txt")
+            print(f"Loading unlabeled data from {list_file}")
+        else:
+            list_file = os.path.join(root, "test.txt")
+            print(f"Loading test data from {list_file}")
+
+        # Load class names from JSON if available
+        if train and lab:
+            metrics_json = os.path.join(root, "stanford_cars_metrics-LAION400M.json")
+            if os.path.exists(metrics_json):
+                with open(metrics_json, "r") as f:
+                    metrics = json.load(f)
+                self.classes = [metrics[str(i)]["most_common_name"] for i in range(len(metrics))]
+
+        # Load samples and targets
+        self.samples, self.targets = read_txt_list(list_file, full_prefix)
+
+        if indexs is not None:
+            self.samples = self.samples[indexs]
+            self.targets = self.targets[indexs]
+
+    def __getitem__(self, index):
+        image_path = self.samples[index]
+        target = self.targets[index]
+        image = self.loader(image_path)
+        if self.transform is not None:
+            image = self.transform(image)
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+        return image, target, index
+
+    def __len__(self):
+        return len(self.samples)
+
+
+def get_stanford_cars(cfg):
+    resize_dim = 256
+    crop_dim = 224
+    dataset_mean=(0.48145466, 0.4578275, 0.40821073)
+    dataset_std=(0.26862954, 0.26130258, 0.27577711)
+
+    transform_labeled = transforms.Compose([
+        transforms.Resize(resize_dim),
+        transforms.RandomCrop(size=crop_dim,
+                              padding=int(crop_dim * 0.125),
+                              padding_mode='reflect'),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=dataset_mean, std=dataset_std)])
+
+    transform_val = transforms.Compose([
+        transforms.Resize((crop_dim, crop_dim)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=dataset_mean, std=dataset_std)])
+
+    if cfg.is_fewshot:
+        train_labeled_dataset = stanford_cars(root=cfg.DATA.DATAPATH, train=True, lab=True, fewshot_file_path=cfg.fewshot_file_path, transform=transform_labeled)
+    else:
+        train_labeled_dataset = stanford_cars(root=cfg.DATA.DATAPATH, train=True, lab=True, transform=transform_labeled)
+
+    train_unlabeled_dataset = stanford_cars(root=cfg.DATA.DATAPATH, train=True, lab=False, out_ulab=cfg.DATA.out_ulab,
+                                          transform=TransformFixMatch_ws(mean=dataset_mean, std=dataset_std))
+
+    test_dataset = stanford_cars(root=cfg.DATA.DATAPATH, train=False, transform=transform_val)
+
+    return train_labeled_dataset, train_unlabeled_dataset, test_dataset
+
+
+
 class Conceptual_Captions(Dataset):
     def __init__(self):
         self.data = []
@@ -1369,10 +1720,13 @@ DATASET_GETTERS = {'CIFAR10': get_cifar10,
                    'IMAGENET': get_imagenet,
                    'iNaturalist': get_iNaturalist,
                    'Semi_Aves': get_semi_aves,
+                   'DTD': get_dtd,
                    'ImageNet-LT': get_imagenet_lt,
                    'semi_ImageNet': get_semi_imagenet,
                    'DomainNet': get_domainnet,
                    'EuroSAT': get_eurosat,
+                   'fgvc-aircraft': get_fgvc_aircraft,
+                   'stanford_cars': get_stanford_cars,
                    'CIFAR100-C': get_cifar100_c,
                    'CUB': get_cub}
 

@@ -4,7 +4,7 @@
 #SBATCH --get-user-env=L          # Replicate login environment
 
 ##NECESSARY JOB SPECIFICATIONS
-#SBATCH --job-name=semi_aves_openclip_b32_16shot
+#SBATCH --job-name=stanford_cars_openclip_b32_16shot
 #SBATCH --output=slurm_log/%x.%j.out
 #SBATCH --error=slurm_log/%x.%j.err
 ##SBATCH --account=132713661936
@@ -23,7 +23,7 @@
 
 export OPENCLIP_CACHE_PATH=/scratch/group/real-fs/openclip_cache
 ##----------- execute bash script
-bash scripts/run_semi_aves_openclip_b32_16shot.sh 
+bash scripts/run_stanford_cars_openclip_b32_16shot.sh 
 
 ##----------- Job Environment variables
 echo "Job ID: $SLURM_JOBID"
